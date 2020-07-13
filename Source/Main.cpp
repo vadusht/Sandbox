@@ -3,6 +3,7 @@
 #include "Game.h"
 #include "Utils.h"
 #include "Main.h"
+#include <stdio.h>
 
 struct Win32WindowDimension
 {
@@ -426,7 +427,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     
     HDC device_context = GetDC(window);
     
-    Win32ResizeDIBSection(&globalBackbuffer, 640, 427);
+    Win32ResizeDIBSection(&globalBackbuffer, 1280, 720);
     
     vec3f color = { 1.0f, 0.0f, 0.0f };
     vec2f pos = { 500.0f, 300.0f };
@@ -443,14 +444,28 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     at += sizeof(BitmapHeader);
     bitmap.buffer = at;
     
-    if(file_contents.buffer)
+    MMRESULT result = timeBeginPeriod(1);
+    if(result != TIMERR_NOERROR)
     {
-        
+        Assert(false);
     }
+    
+    LARGE_INTEGER frequency;
+    QueryPerformanceFrequency(&frequency);
+    
+    u64 starting_time_stamp_counter = __rdtsc();
+    
+    f32 target_frames_per_second = 60.0f;
+    f32 target_seconds_per_frame = 1.0f / target_frames_per_second;
+    f32 target_milliseconds_per_frame = 1000.0f * target_seconds_per_frame;
     
     if(window)
     {
         running = true;
+        
+        LARGE_INTEGER starting_time;
+        QueryPerformanceCounter(&starting_time);
+        
         while(running)
         {
             MSG message = {};
@@ -478,7 +493,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             }
             
             
-            DrawRectangle(&globalBackbuffer, {0.0f, 0.0f}, {1280.0f, 720.0f}, {1.0f, 1.0f, 0.0f});
+            for(int i = 0; i < 1; i++)
+            {
+                DrawRectangle(&globalBackbuffer, {0.0f, 0.0f}, {1280.0f, 720.0f}, {1.0f, 1.0f, 0.0f});
+            }
+            
             
 #if 0            
             DrawRectangle(&globalBackbuffer, {(f32)input.x_pos,(f32)input.y_pos}, {(f32)input.x_pos + 50.0f, (f32)input.y_pos + 50.0f}, {1.0f, 0.0f, 0.0f});
@@ -486,7 +505,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             
             //DrawBitmap(&globalBackbuffer, {200.0f, 300.0f}, &bitmap);
             //DrawBitmap(&globalBackbuffer, {500.0f, 500.0f}, &bitmap1);
-            DrawBitmap(&globalBackbuffer, {0.0f, 0.0f}, &bitmap);
+            DrawBitmap(&globalBackbuffer, pos, &bitmap);
             //DrawRectangle(&globalBackbuffer, pos, pos + size, color);
             
             Win32WindowDimension dimension = Win32GetWindowDimension(window);
@@ -511,6 +530,38 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             {
                 pos.y += 1.0f;
             }
+            
+            u64 ending_time_stamp_counter = __rdtsc();
+            
+            LARGE_INTEGER ending_time;
+            QueryPerformanceCounter(&ending_time);
+            
+            u64 counter_elapsed = ending_time.QuadPart - starting_time.QuadPart;
+            f32 milliseconds_per_frame = ((f32)counter_elapsed * 1000.0f) / (f32)frequency.QuadPart;
+            
+            if(milliseconds_per_frame < target_milliseconds_per_frame)
+            {
+                DWORD sleep_milliseconds = (DWORD)(target_milliseconds_per_frame - milliseconds_per_frame);
+                Sleep(sleep_milliseconds);
+            }
+            else
+            {
+                OutputDebugString("We missed frame rate!!!\n");
+            }
+            
+            QueryPerformanceCounter(&ending_time);
+            
+            counter_elapsed = ending_time.QuadPart - starting_time.QuadPart;
+            milliseconds_per_frame = ((f32)counter_elapsed * 1000.0f) / (f32)frequency.QuadPart;
+            u64 cycles_elapsed = ending_time_stamp_counter - starting_time_stamp_counter;
+            f32 frames_per_second = 1000.0f / milliseconds_per_frame;
+            
+            char time_measurment[256] = {};
+            sprintf(time_measurment, "%.02f ms/f, %.02f f/s, %llu c/f\n", milliseconds_per_frame, frames_per_second, cycles_elapsed);
+            OutputDebugString(time_measurment);
+            
+            starting_time = ending_time;
+            starting_time_stamp_counter = ending_time_stamp_counter;
         }
     }
     
