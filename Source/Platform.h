@@ -27,4 +27,12 @@ struct Bitmap
 
 #pragma pack(pop)
 
+struct Win32GameCode
+{
+    HMODULE game_code_dll;
+    GameUpdateAndRenderFunc* UpdateAndRender;
+    
+    b32 valid;
+};
+
 #endif //_MAIN_H

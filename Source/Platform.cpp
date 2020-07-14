@@ -2,7 +2,8 @@
 #include <Windowsx.h>
 #include "Game.h"
 #include "Utils.h"
-#include "Main.h"
+#include "Math.h"
+#include "Platform.h"
 #include <stdio.h>
 
 struct Win32WindowDimension
@@ -23,129 +24,6 @@ struct Win32OffscreenBuffer
 
 global_variable Win32OffscreenBuffer globalBackbuffer;
 global_variable bool running;
-
-struct vec2f
-{
-    f32 x, y;
-};
-
-internal vec2f
-operator+(vec2f left, vec2f right)
-{
-    vec2f result;
-    
-    result.x = left.x + right.x;
-    result.y = left.y + right.y;
-    
-    return result;
-}
-
-union vec3f
-{
-    struct 
-    {
-        f32 x, y, z;
-    };
-    struct
-    {
-        f32 r, g, b;
-    };
-};
-
-
-s32 RoundFloat32ToInt32(f32 value)
-{
-    s32 result = (s32)(value + 0.5f);
-    return result;
-}
-
-
-u32 RoundFloat32ToUInt32(f32 value)
-{
-    u32 result = (u32)(value + 0.5f);
-    return result;
-}
-
-#if 0
-enum PNGChunk
-{
-    PNGChunk_IHDR = 0x52444849;
-    PNGChunk_sRGB = 
-        PNGChunk_IDAT = 
-        PNGChunk_IEND = 
-}
-#endif 
-
-#if 0
-void ParsePNG(void* buffer, s64 size)
-{
-    //return;
-    u8* pointer = (u8*)buffer;
-    u64 header = *(u64*)pointer;
-    pointer += sizeof(header);
-    bool parsing = true;
-    if(header == PNG_HEADER_BIG_ENDIAN)
-    {
-        while(parsing)
-        {
-            u32 chunk_length = *(u32*)pointer;
-            UInt32ChangeEndianness(&chunk_length);
-            pointer += sizeof(chunk_length);
-            u32 chunk_type = *(u32*)pointer;
-            pointer += sizeof(chunk_type);
-            if(chunk_type == PNG_CHUNK_IHDR_BIG_ENDIAN)
-            {
-                u32 width = *(u32*)pointer;
-                pointer += sizeof(width);
-                
-                u32 height = *(u32*)pointer;
-                pointer += sizeof(height);
-                
-                u8 depth = *(u8*)pointer;
-                pointer += sizeof(depth);
-                
-                u8 color_type = *(u8*)pointer;
-                pointer += sizeof(color_type);
-                
-                u8 compression = *(u8*)pointer;
-                pointer += sizeof(compression);
-                
-                u8 filter = *(u8*)pointer;
-                pointer += sizeof(filter);
-                
-                u8 interlace = *(u8*)pointer;
-                pointer += sizeof(interlace);
-            }
-            else if(chunk_type == PNG_CHUNK_IDAT_BIG_ENDIAN)
-            { 
-                u8 zlib_compression = *(u8*)pointer;
-                pointer += sizeof(zlib_compression);
-                
-                u8 cm = zlib_compression & 0x0F;
-                u8 cinfo = zlib_compression >> 4;
-                
-                u8 flags = *(u8*)pointer;
-                pointer += sizeof(flags);
-                
-                u8 fcheck = flags & 0x0F;
-                u8 fdict = flags & 0x10;
-                u8 flevel = flags & 0xC0;
-                
-                int b = 20;
-                
-                //u8 check_value = *(u8*)pointer;
-                //pointer += sizeof(check_value);
-            }
-            else
-            {
-                pointer += chunk_length;
-            }
-            u32 crc = *(u32*)pointer;
-            pointer += sizeof(crc);
-        }
-    }
-}
-#endif
 
 internal FileContents 
 Win32ReadEntireFile(char* filename)
@@ -179,96 +57,27 @@ Win32ReadEntireFile(char* filename)
 }
 
 
-internal void
-DrawBitmap(Win32OffscreenBuffer* buffer, vec2f position, Bitmap* bitmap)
+internal Win32GameCode
+Win32LoadGameCode() 
 {
-    s32 min_x = RoundFloat32ToInt32(position.x);
-    s32 min_y = RoundFloat32ToInt32(position.y);
-    s32 max_x = min_x + bitmap->header.width;
-    s32 max_y = min_y + bitmap->header.height;
+    Win32GameCode result = {};
     
-    u32* at = (u32*)bitmap->buffer;
-    
-    if(min_x < 0)
+    result.game_code_dll = LoadLibrary("Game.dll");
+    if (result.game_code_dll) 
     {
-        min_x = 0;
-    }
-    if (min_y < 0)
-    {
-        min_y = 0;
-    }
-    if (max_x > buffer->width)
-    {
-        max_x = buffer->width;
-    }
-    if (max_y > buffer->height)
-    {
-        max_y = buffer->height;
+        result.UpdateAndRender =
+            (GameUpdateAndRenderFunc *)(GetProcAddress(result.game_code_dll, "GameUpdateAndRender"));
+        
+        result.valid = (result.UpdateAndRender != 0);
     }
     
-    u32 pixelColor = 0;
-    
-    for (u32 y =  min_y; y < max_y; y++)
+    if (!result.valid)
     {
-        for (u32 x = min_x; x < max_x; x++)
-        {
-            pixelColor = at[((y - min_y) * bitmap->header.width) + (x - min_x)];
-            
-            u8 r = (pixelColor >> 0) & 0xFF;
-            u8 g = (pixelColor >> 8) & 0xFF;
-            u8 b = (pixelColor >> 16) & 0xFF;
-            u8 a = (pixelColor >> 24) & 0xFF;
-            
-            if(a)
-            {
-                pixelColor = ((a << 24) |
-                              (r << 16) |
-                              (g << 8) |
-                              (b << 0));
-                
-                ((u32 *) buffer->memory)[y * buffer->width + x] = pixelColor;
-            }
-        }
-    }
-}
-
-internal void
-DrawRectangle(Win32OffscreenBuffer* buffer, vec2f min, vec2f max, vec3f color)
-{
-    s32 min_x = RoundFloat32ToInt32(min.x);
-    s32 min_y = RoundFloat32ToInt32(min.y);
-    s32 max_x = RoundFloat32ToInt32(max.x);
-    s32 max_y = RoundFloat32ToInt32(max.y);
-    
-    if(min_x < 0)
-    {
-        min_x = 0;
-    }
-    if (min_y < 0)
-    {
-        min_y = 0;
-    }
-    if (max_x > buffer->width)
-    {
-        max_x = buffer->width;
-    }
-    if (max_y > buffer->height)
-    {
-        max_y = buffer->height;
+        result.UpdateAndRender = GameUpdateAndRenderStub;
     }
     
-    u32 pixelColor = ((RoundFloat32ToUInt32(color.r * 255.0f) << 16) |
-                      (RoundFloat32ToUInt32(color.g * 255.0f) << 8) |
-                      (RoundFloat32ToUInt32(color.b * 255.0f) << 0));
-    
-    for (u32 y =  min_y; y < max_y; y++)
-    {
-        for (u32 x = min_x; x < max_x; x++)
-        {
-            ((u32 *) buffer->memory)[y * buffer->width + x] = pixelColor;
-        }
-    }
-}
+    return result;
+};
 
 
 internal void
@@ -437,12 +246,16 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     
     FileContents file_contents = Win32ReadEntireFile("Jump (32x32).rgba");
     
+    
     Bitmap bitmap;
     
-    bitmap.header = *(BitmapHeader*)file_contents.buffer;
-    u8* at = (u8*)file_contents.buffer;
-    at += sizeof(BitmapHeader);
-    bitmap.buffer = at;
+    if(file_contents.buffer)
+    {
+        bitmap.header = *(BitmapHeader*)file_contents.buffer;
+        u8* at = (u8*)file_contents.buffer;
+        at += sizeof(BitmapHeader);
+        bitmap.buffer = at;
+    }
     
     MMRESULT result = timeBeginPeriod(1);
     if(result != TIMERR_NOERROR)
@@ -459,8 +272,22 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     f32 target_seconds_per_frame = 1.0f / target_frames_per_second;
     f32 target_milliseconds_per_frame = 1000.0f * target_seconds_per_frame;
     
+    
+    
     if(window)
     {
+        Win32GameCode game = Win32LoadGameCode();
+        
+        GameOffscreenBuffer buffer = {};
+        buffer.memory = globalBackbuffer.memory;
+        buffer.width = globalBackbuffer.width;
+        buffer.height = globalBackbuffer.height;
+        buffer.pitch = globalBackbuffer.pitch;
+        
+        GameMemory game_memory = {};
+        game_memory.permanent_storage_size = Megabytes(64);
+        game_memory.transient_storage_size = Gigabytes(1);
+        
         running = true;
         
         LARGE_INTEGER starting_time;
@@ -493,11 +320,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             }
             
             
-            for(int i = 0; i < 1; i++)
-            {
-                DrawRectangle(&globalBackbuffer, {0.0f, 0.0f}, {1280.0f, 720.0f}, {1.0f, 1.0f, 0.0f});
-            }
-            
             
 #if 0            
             DrawRectangle(&globalBackbuffer, {(f32)input.x_pos,(f32)input.y_pos}, {(f32)input.x_pos + 50.0f, (f32)input.y_pos + 50.0f}, {1.0f, 0.0f, 0.0f});
@@ -505,7 +327,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             
             //DrawBitmap(&globalBackbuffer, {200.0f, 300.0f}, &bitmap);
             //DrawBitmap(&globalBackbuffer, {500.0f, 500.0f}, &bitmap1);
-            DrawBitmap(&globalBackbuffer, pos, &bitmap);
+            //DrawBitmap(&globalBackbuffer, pos, &bitmap);
             //DrawRectangle(&globalBackbuffer, pos, pos + size, color);
             
             Win32WindowDimension dimension = Win32GetWindowDimension(window);
@@ -513,6 +335,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance,
                                        dimension.width, dimension.height,
                                        &globalBackbuffer);
             
+            
+            game.UpdateAndRender(&game_memory, &buffer);
             
             if(input.left_pressed)
             {

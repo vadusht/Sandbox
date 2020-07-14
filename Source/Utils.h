@@ -4,6 +4,7 @@
 #define _UTILS_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #define internal static
 #define local_persist static
